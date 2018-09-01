@@ -41,11 +41,10 @@ function* zip<T>(...iterables: Iterable<T>[]): Iterable<T> {
 ```
 
 However, the functions provided by this package have a number of important advantages over a naive implementation:
-1. The resulting `Iterable` can be looped over multiple times (i.e. it returns a fresh `Iterator` in response to `[Symbol.iterator]()`). This would not be the case if `zip` itself was a generator function.
-2. As soon as `next()` on one of the `Iterator`s returns `done = true`, the remaining `Iterator`s are closed by calling the `return()` method, if defined. This gives the `Iterator` an opportunity to free any resources so they do not leak. For example, if the `Iterator` is a generator, this executes any `finally {..}` blocks around the current `yield`.
-3. If any of the `Iterator`s throw in response to `next()`, all of the `Iterator`s are closed with `return()`.
+1. The resulting `Iterable` can be looped over multiple times (i.e. it returns a fresh `Iterator` in response to `[Symbol.iterator]()`). This would not be the case if `zip` itself is a generator function.
+2. As soon as `next()` on one of the `Iterator`s either returns `done = true` or throws, the other `Iterator`s are closed by calling the `return()` method, if defined. This gives the `Iterator` an opportunity to free any resources so they do not leak. For example, if the `Iterator` is a generator, this executes any `finally {..}` blocks around the current `yield`.
 4. If any of the `Iterator`s throw in response to `return()`, this does not prevent `return()` from being called on the other `Iterator`s.
 5. If any of the `Iterator`s throw in response to `return()` and an error has already been caught, the original error is re-thrown instead of the new one. (This is what TypeScript and Babel do for a `for...of` loop.)
-3. The `return()` method is only called on `Iterator`s that have started (`next()` called at least once) but not finished (`next()` has not returned `done = true`). (This is what TypeScript and Babel do for a `for...of` loop.)
+3. The `return()` method is only called on `Iterator`s that have started (`next()` called at least once) but not finished (`next()` has not returned `done = true`) and not thrown. (This is what TypeScript and Babel do for a `for...of` loop.)
 6. Any input passed to the zipped `Iterator` via the `next()` method is forwarded to the individual `Iterator`s.
 7. For `zipAsync`, the `next()` and `return()` methods of the `AsyncIterator`s are executed in parallel to maximise throughput.

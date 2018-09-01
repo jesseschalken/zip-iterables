@@ -1,0 +1,16 @@
+{
+  "name": "zip-iterables",
+  "version": "1.0.0",
+  "description": "Convert an array of iterables to an iterable of arrays",
+  "main": "index.js",
+  "types": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Jesse Schalken",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^10.9.4",
+    "typescript": "^3.0.3"
+  }
+}
