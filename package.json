@@ -2,10 +2,10 @@
   "name": "zip-iterables",
   "version": "1.0.0",
   "description": "Convert an array of iterables to an iterable of arrays",
-  "main": "src/index.js",
-  "types": "src/index.ts",
+  "main": "index.js",
+  "types": "index.ts",
   "scripts": {
-    "test": "node src/test.js",
+    "test": "node test.js",
     "build": "./node_modules/.bin/tsc",
     "prepare": "npm run build"
   },
@@ -16,7 +16,8 @@
     "typescript": "^3.0.3"
   },
   "files": [
-    "dist",
-    "src"
+    "*.js",
+    "*.js.map",
+    "*.ts"
   ]
 }

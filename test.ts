@@ -1,5 +1,5 @@
 import { strict as assert } from "assert";
-import { zip, zipAsyncParallel, zipAsyncSequential, iterableToAsyncIterable, asyncIterableToArray } from "./index";
+import { zip, zipAsyncParallel, zipAsyncSequential, iterableToAsyncIterable, asyncIterableToArray } from ".";
 
 const mkIter = <T>(gen: () => Iterator<T>) => ({ [Symbol.iterator]: gen });
 const mkIterAsync = <T>(gen: () => AsyncIterator<T>) => ({ [Symbol.asyncIterator]: gen });
