@@ -1,5 +1,5 @@
 import { strict as assert } from "assert";
-import { zip, zipAsync, asyncIterToArray, iterToAsync, zipAsyncSequential } from "./index";
+import { zip, zipAsyncParallel, zipAsyncSequential, iterableToAsyncIterable, asyncIterableToArray } from "./index";
 
 const mkIter = <T>(gen: () => Iterator<T>) => ({ [Symbol.iterator]: gen });
 const mkIterAsync = <T>(gen: () => AsyncIterator<T>) => ({ [Symbol.asyncIterator]: gen });
@@ -15,22 +15,23 @@ function cleanMonitorResult<T>(r: MonitorResult<T>): MonitorResult<T> {
   return { log, err, ret };
 }
 
-async function assertMonitorAsync<T>(
-  params: MonitorResult<T> & { fn(log: (s: unknown) => void): Promise<T> }
-): Promise<void> {
+interface AssertMonitorParams<T> extends MonitorResult<T> {
+  fn(log: (s: unknown) => void): Promise<T>;
+}
+
+async function assertMonitorAsync<T>(params: AssertMonitorParams<T>): Promise<void> {
   const log = new Array<unknown>();
-  let ret;
-  let err;
+  const actual: MonitorResult<T> = { log };
   try {
-    ret = await params.fn(s => void log.push(s));
+    actual.ret = await params.fn(s => void log.push(s));
   } catch (e) {
-    err = e;
+    actual.err = e;
   }
-  assert.deepStrictEqual({ log, err, ret }, cleanMonitorResult(params));
+  assert.deepStrictEqual(cleanMonitorResult(actual), cleanMonitorResult(params));
 }
 
 async function basic(zip: ZipImpl) {
-  assert.deepStrictEqual(await asyncIterToArray(zip<unknown>([1, 2, 3], ["a", "b", "c"])), [
+  assert.deepStrictEqual(await asyncIterableToArray(zip<unknown>([1, 2, 3], ["a", "b", "c"])), [
     [1, "a"],
     [2, "b"],
     [3, "c"]
@@ -38,7 +39,7 @@ async function basic(zip: ZipImpl) {
 }
 
 async function lengthIsShortest(zip: ZipImpl) {
-  assert.deepStrictEqual(await asyncIterToArray(zip<unknown>(["a"], ["b", "c"])), [["a", "b"]]);
+  assert.deepStrictEqual(await asyncIterableToArray(zip<unknown>(["a"], ["b", "c"])), [["a", "b"]]);
 }
 
 async function loopMultipleTimes(zip: ZipImpl) {
@@ -57,14 +58,14 @@ async function loopMultipleTimes(zip: ZipImpl) {
     })
   );
   const ret = [["a", "b", "c"], ["x", "y", "z"]];
-  assert.deepStrictEqual(await asyncIterToArray(list), ret);
-  assert.deepStrictEqual(await asyncIterToArray(list), ret);
+  assert.deepStrictEqual(await asyncIterableToArray(list), ret);
+  assert.deepStrictEqual(await asyncIterableToArray(list), ret);
 }
 
 async function finallyCalled(zip: ZipImpl) {
   await assertMonitorAsync({
     fn(log) {
-      return asyncIterToArray(
+      return asyncIterableToArray(
         zip(
           mkIter(function*() {
             try {
@@ -99,7 +100,7 @@ type ZipImpl = <T>(...iterables: Iterable<T>[]) => AsyncIterable<T[]>;
 async function throwInNext(zip: ZipImpl) {
   await assertMonitorAsync({
     fn(log) {
-      return asyncIterToArray(
+      return asyncIterableToArray(
         zip(
           mkIter(function*() {
             try {
@@ -138,7 +139,7 @@ async function throwInNext(zip: ZipImpl) {
 async function throwInFinally(zip: ZipImpl) {
   await assertMonitorAsync({
     fn(log) {
-      return asyncIterToArray(
+      return asyncIterableToArray(
         zip(
           mkIter(function*() {
             try {
@@ -188,7 +189,7 @@ async function throwInFinally(zip: ZipImpl) {
 async function rethrowOriginalError(zip: ZipImpl) {
   await assertMonitorAsync({
     fn(log) {
-      return asyncIterToArray(
+      return asyncIterableToArray(
         zip(
           mkIter(function*() {
             try {
@@ -222,7 +223,7 @@ async function rethrowOriginalError(zip: ZipImpl) {
 async function throwInReturnDoesntBlockOtherReturns(zip: ZipImpl) {
   assertMonitorAsync({
     fn(log) {
-      return asyncIterToArray(
+      return asyncIterableToArray(
         zip(
           mkIter(function*() {
             try {
@@ -283,7 +284,7 @@ async function inputIsForwarded(zip: ZipImpl) {
           log("finish 3");
         })
       )[Symbol.asyncIterator]();
-      return asyncIterToArray(
+      return asyncIterableToArray(
         mkIterAsync(async function*() {
           let i = 0;
           while (true) {
@@ -316,7 +317,7 @@ function waitABit() {
 async function asyncIsParallel() {
   await assertMonitorAsync({
     async fn(log) {
-      const it = zipAsync(
+      const it = zipAsyncParallel(
         mkIterAsync(async function*() {
           try {
             log("1.1");
@@ -403,8 +404,8 @@ async function standardTests(zip: ZipImpl) {
 }
 
 async function main() {
-  await standardTests((...its) => iterToAsync(zip(...its)));
-  await standardTests((...its) => zipAsyncSequential(...its.map(iterToAsync)));
+  await standardTests((...its) => iterableToAsyncIterable(zip(...its)));
+  await standardTests((...its) => zipAsyncSequential(...its.map(iterableToAsyncIterable)));
   await asyncIsParallel();
 
   console.log("tests finished");
