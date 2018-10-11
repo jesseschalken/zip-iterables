@@ -12,8 +12,8 @@
   "author": "Jesse Schalken",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.9.4",
-    "typescript": "^3.0.3"
+    "@types/node": "^10.11.7",
+    "typescript": "^3.1.2"
   },
   "files": [
     "*.js",
