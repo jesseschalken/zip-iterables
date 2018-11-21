@@ -1,7 +1,7 @@
 /**
  * Convert an `AsyncIterable` into an array.
  */
-export async function asyncIterableToArray<T>(xs: AsyncIterable<T>): Promise<T[]> {
+export async function asyncIterableToArray<T>(xs: AsyncIterable<T> | Iterable<T>): Promise<T[]> {
   const ret = new Array<T>();
   for await (const x of xs) {
     ret.push(x);
