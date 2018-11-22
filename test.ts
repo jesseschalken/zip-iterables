@@ -297,7 +297,7 @@ async function inputIsForwarded(zip: ZipImpl) {
         })
       );
     },
-    log: [1, 1, 1, 2, 2, 2, 3, "finish 1"],
+    log: [1, 1, 1, 2, 2, 2, 3, "finish 1", 3, "finish 2", 3, "finish 3"],
     ret: [["a", "d", "g"], ["b", "e", "h"], ["c", "f", "i"]]
   });
 }

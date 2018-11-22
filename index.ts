@@ -29,17 +29,17 @@ export function iterableToAsyncIterable<T>(iterable: Iterable<T> | Promise<Itera
     [Symbol.asyncIterator]() {
       const _iter = Promise.resolve(iterable).then(x => x[Symbol.iterator]());
       return {
-        async next(value: unknown): Promise<IteratorResult<T>> {
+        async next(value: unknown) {
           return (await _iter).next(value);
         },
-        async return(value: T): Promise<IteratorResult<T>> {
+        async return(value: T) {
           const iter = await _iter;
           if (iter.return) {
             return iter.return(value);
           }
           return { done: true, value };
         },
-        async throw(e: unknown): Promise<IteratorResult<T>> {
+        async throw(e: unknown) {
           const iter = await _iter;
           if (iter.throw) {
             return iter.throw(e);
@@ -51,48 +51,132 @@ export function iterableToAsyncIterable<T>(iterable: Iterable<T> | Promise<Itera
   };
 }
 
+function iteratorReturn<T>(x: Iterator<T>, y?: any) {
+  if (x.return) return x.return(y);
+  return { done: true, value: y };
+}
+
+function iteratorThrow<T>(x: Iterator<T>, y?: any) {
+  if (x.throw) return x.throw(y);
+  throw y;
+}
+
+function asyncIteratorReturn<T>(x: IteratorOrAsyncIterator<T>, y?: any) {
+  if (x.return) return x.return(y);
+  return { done: true, value: y };
+}
+
+function asyncIteratorThrow<T>(x: IteratorOrAsyncIterator<T>, y?: any) {
+  if (x.throw) return x.throw(y);
+  throw y;
+}
+
 class IteratorState<T> {
-  private isRunning: boolean = false;
-  private iterator: Iterator<T>;
-  constructor(iter: Iterable<T>) {
-    this.iterator = iter[Symbol.iterator]();
-  }
-  next(input: unknown) {
-    let result;
+  done: boolean = true;
+  constructor(private iterator: Iterator<T>) {}
+  modify(fn: (x: Iterator<T>) => IteratorResult<T>) {
     try {
-      result = this.iterator.next(input);
+      const result = fn(this.iterator);
+      this.done = result.done;
+      return result;
     } catch (e) {
-      this.isRunning = false;
+      this.done = true;
       throw e;
-    }
-    this.isRunning = !result.done;
-    return result;
-  }
-  finish() {
-    if (this.iterator.return && this.isRunning) {
-      this.iterator.return();
     }
   }
 }
 
-class AsyncIteratorState<T> {
-  private isRunning: Promise<boolean> | boolean = false;
-  private iterator: AsyncIterator<T>;
-  constructor(iter: AsyncIterable<T>) {
-    this.iterator = iter[Symbol.asyncIterator]();
-  }
-  next(input: unknown) {
-    const result = this.iterator.next(input);
-    this.isRunning = result.then(x => !x.done, () => false);
-    return result;
-  }
-  async finish() {
-    // Always await this.isRunning to ensure finish() doesn't return until the iterator has really finished.
-    const isRunning = await this.isRunning;
-    if (this.iterator.return && isRunning) {
-      await this.iterator.return();
+function zipIterator<T>(iters: Iterator<T>[]): Iterator<T[]> {
+  const states = iters.map(x => new IteratorState(x));
+
+  function mapIters(fn: (iter: Iterator<T>) => IteratorResult<T>) {
+    try {
+      const results = states.map(x => x.modify(fn));
+      const result = {
+        done: results.some(x => x.done),
+        value: results.map(x => x.value)
+      };
+      if (result.done) {
+        states.forEach(x => {
+          if (!x.done) x.modify(x => iteratorReturn(x));
+        });
+      }
+      return result;
+    } catch (e) {
+      states.forEach(x => {
+        try {
+          if (!x.done) x.modify(x => iteratorReturn(x));
+        } catch (_) {}
+      });
+      throw e;
     }
   }
+
+  return {
+    next: (v: any) => mapIters(x => x.next(v)),
+    throw: (v: any) => mapIters(x => iteratorThrow(x, v)),
+    return: (v: T) => mapIters(x => iteratorReturn(x, v))
+  };
+}
+
+function getIteratorOrAsyncIterator<T>(x: IterableOrAsyncIterable<T>) {
+  return isAsyncIterable(x) ? x[Symbol.asyncIterator]() : x[Symbol.iterator]();
+}
+
+type AsyncMapFn = <T, U>(xs: T[], fn: (x: T) => OrPromise<U>) => OrPromise<U[]>;
+
+class AsyncIteratorState<T> {
+  done: OrPromise<boolean> = true;
+  constructor(private iterator: IteratorOrAsyncIterator<T>) {}
+  async modify(fn: (x: IteratorOrAsyncIterator<T>) => OrPromise<IteratorResult<T>>) {
+    // Fetch the result through an async function so failure is always captured as a rejected
+    // Promise instead of as a synchronous throw.
+    const result = (async () => fn(this.iterator))();
+    async function isDone() {
+      try {
+        return (await result).done;
+      } catch (e) {
+        return true;
+      }
+    }
+    this.done = isDone();
+    return result;
+  }
+}
+
+function asyncZipIterator<T>(iters: IteratorOrAsyncIterator<T>[], asyncMap: AsyncMapFn): AsyncIterator<T[]> {
+  const states = iters.map(x => new AsyncIteratorState(x));
+
+  async function mapIters(
+    fn: (x: IteratorOrAsyncIterator<T>) => OrPromise<IteratorResult<T>>
+  ): Promise<IteratorResult<T[]>> {
+    try {
+      const results = await asyncMap(states, x => x.modify(fn));
+      const result = {
+        done: results.some(x => x.done),
+        value: results.map(x => x.value)
+      };
+      if (result.done) {
+        await asyncMap(states, async x => {
+          if (!(await x.done)) await x.modify(x => asyncIteratorReturn(x));
+        });
+      }
+      return result;
+    } catch (e) {
+      await asyncMap(states, async x => {
+        try {
+          if (!(await x.done)) await x.modify(x => asyncIteratorReturn(x));
+        } catch (_) {}
+      });
+      throw e;
+    }
+  }
+
+  return {
+    next: (v: any) => mapIters(x => x.next(v)),
+    throw: (v: any) => mapIters(x => asyncIteratorThrow(x, v)),
+    return: (v: T) => mapIters(x => asyncIteratorReturn(x, v))
+  };
 }
 
 function mkZip() {
@@ -115,104 +199,37 @@ function mkZip() {
   function zip<T>(...iterables: Iterable<T>[]): Iterable<T[]>;
   function zip<T>(...iterables: Iterable<T>[]): Iterable<T[]> {
     return {
-      *[Symbol.iterator]() {
-        const iters = iterables.map(x => new IteratorState(x));
-        let error: { e: unknown } | null = null;
-        try {
-          let input: unknown = undefined;
-          while (true) {
-            const ret = new Array<T>();
-            for (const iter of iters) {
-              const { value, done } = iter.next(input);
-              if (done) {
-                return;
-              }
-              ret.push(value);
-            }
-            input = yield ret;
-          }
-        } catch (e) {
-          error = { e };
-        } finally {
-          try {
-            for (const iter of iters) {
-              try {
-                iter.finish();
-              } catch (e) {
-                if (!error) {
-                  error = { e };
-                }
-                // If we already had an error set, ignore this one and let the old one get re-thrown.
-              }
-            }
-          } finally {
-            if (error) {
-              throw error.e;
-            }
-          }
-        }
+      [Symbol.iterator]() {
+        return zipIterator(iterables.map(x => x[Symbol.iterator]()));
       }
     };
   }
   return zip;
 }
 
-function makeZipAsync(asyncMap: <T, U>(xs: T[], fn: (x: T) => Promise<U> | U) => AsyncIterable<U>) {
-  type AI<T> = AsyncIterable<T>;
+function makeZipAsync(asyncMap: AsyncMapFn) {
+  type AI<T> = IterableOrAsyncIterable<T>;
+  type A_<T> = AsyncIterable<T>;
   /** Create an infinite `AsyncIterable` of null tuples. */
-  function zip(): AI<[]>;
-  /** Convert a `AsyncIterable` into an `AsyncIterable` of singletons. */
-  function zip<A>(a: AI<A>): AI<[A]>;
-  /** Convert two `AsyncIterable`s into an `AsyncIterable` of pairs. */
-  function zip<A, B>(a: AI<A>, b: AI<B>): AI<[A, B]>;
-  /** Convert three `AsyncIterable`s into an `AsyncIterable` of triplets. */
-  function zip<A, B, C>(a: AI<A>, b: AI<B>, c: AI<C>): AI<[A, B, C]>;
-  /** Convert four `AsyncIterable`s into an `AsyncIterable` of 4-tuples. */
-  function zip<A, B, C, D>(a: AI<A>, b: AI<B>, c: AI<C>, d: AI<D>): AI<[A, B, C, D]>;
-  /** Convert five `AsyncIterable`s into an `AsyncIterable` of 5-tuples. */
-  function zip<A, B, C, D, E>(a: AI<A>, b: AI<B>, c: AI<C>, d: AI<D>, e: AI<E>): AI<[A, B, C, D, E]>;
-  /** Convert six `AsyncIterable`s into an `AsyncIterable` of 6-tuples. */
-  function zip<A, B, C, D, E, F>(a: AI<A>, b: AI<B>, c: AI<C>, d: AI<D>, e: AI<E>, f: AI<F>): AI<[A, B, C, D, E, F]>;
-  /** Convert multiple `AsyncIterable`s into an `AsyncIterable` of arrays. */
-  function zip<T>(...iterables: AsyncIterable<T>[]): AsyncIterable<T[]>;
-  function zip<T>(...iterables: AsyncIterable<T>[]): AsyncIterable<T[]> {
+  function zip(): A_<[]>;
+  /** Convert an `Iterable` or `AsyncIterable` into an `AsyncIterable` of singletons. */
+  function zip<A>(a: AI<A>): A_<[A]>;
+  /** Convert two `Iterable`s or `AsyncIterable`s into an `AsyncIterable` of pairs. */
+  function zip<A, B>(a: AI<A>, b: AI<B>): A_<[A, B]>;
+  /** Convert three `Iterable`s or `AsyncIterable`s into an `AsyncIterable` of triplets. */
+  function zip<A, B, C>(a: AI<A>, b: AI<B>, c: AI<C>): A_<[A, B, C]>;
+  /** Convert four `Iterable`s or `AsyncIterable`s into an `AsyncIterable` of 4-tuples. */
+  function zip<A, B, C, D>(a: AI<A>, b: AI<B>, c: AI<C>, d: AI<D>): A_<[A, B, C, D]>;
+  /** Convert five `Iterable`s or `AsyncIterable`s into an `AsyncIterable` of 5-tuples. */
+  function zip<A, B, C, D, E>(a: AI<A>, b: AI<B>, c: AI<C>, d: AI<D>, e: AI<E>): A_<[A, B, C, D, E]>;
+  /** Convert six `Iterable`s or `AsyncIterable`s into an `AsyncIterable` of 6-tuples. */
+  function zip<A, B, C, D, E, F>(a: AI<A>, b: AI<B>, c: AI<C>, d: AI<D>, e: AI<E>, f: AI<F>): A_<[A, B, C, D, E, F]>;
+  /** Convert multiple `Iterable`s or `AsyncIterable`s into an `AsyncIterable` of arrays. */
+  function zip<T>(...iterables: AI<T>[]): A_<T[]>;
+  function zip<T>(...iterables: AI<T>[]): A_<T[]> {
     return {
-      async *[Symbol.asyncIterator]() {
-        const iters = iterables.map(x => new AsyncIteratorState(x));
-        let error: { e: unknown } | null = null;
-        try {
-          let input: unknown = undefined;
-          while (true) {
-            const ret = new Array<T>();
-            for await (const { done, value } of asyncMap(iters, x => x.next(input))) {
-              if (done) {
-                return;
-              }
-              ret.push(value);
-            }
-            input = yield ret;
-          }
-        } catch (e) {
-          error = { e };
-        } finally {
-          try {
-            for await (const _ of asyncMap(iters, async iter => {
-              try {
-                await iter.finish();
-              } catch (e) {
-                if (!error) {
-                  error = { e };
-                }
-                // If an error has already been caught, ignore this one and let the old one get re-thrown.
-              }
-            })) {
-            }
-          } finally {
-            if (error) {
-              throw error.e;
-            }
-          }
-        }
+      [Symbol.asyncIterator]() {
+        return asyncZipIterator(iterables.map(x => getIteratorOrAsyncIterator(x)), asyncMap);
       }
     };
   }
@@ -226,21 +243,23 @@ function makeZipAsync(asyncMap: <T, U>(xs: T[], fn: (x: T) => Promise<U> | U) =>
 export const zip = mkZip();
 
 /**
- * Convert multiple `AsyncIterable`s into an `AsyncIterable` of arrays. The `next()` and `return()` methods of the
- * iterators are executed in parallel using `Promise.all()` to maximise throughput.
+ * Convert multiple `Iterable`s or `AsyncIterable`s into an `AsyncIterable` of arrays. The `next()` and `return()`
+ * methods of the iterators are executed in parallel using `Promise.all()` to maximise throughput.
  */
-export const zipAsyncParallel = makeZipAsync(async function*(xs, fn) {
-  yield* await Promise.all(xs.map(fn));
+export const zipAsyncParallel = makeZipAsync(function(xs, fn) {
+  return Promise.all(xs.map(fn));
 });
 
 /**
- * Convert multiple `AsyncIterable`s into an `AsyncIterable` of arrays. The `next()` and `return()` methods of the
- * iterators are executed sequentially, providing the same semantics as `zip`.
+ * Convert multiple `Iterable`s or `AsyncIterable`s into an `AsyncIterable` of arrays. The `next()` and `return()`
+ * methods of the iterators are executed sequentially, providing the same semantics as `zip`.
  */
-export const zipAsyncSequential = makeZipAsync(async function*(xs, fn) {
+export const zipAsyncSequential = makeZipAsync(async function(xs, fn) {
+  const ys = [];
   for await (const x of xs) {
-    yield fn(x);
+    ys.push(await fn(x));
   }
+  return ys;
 });
 
 /**
