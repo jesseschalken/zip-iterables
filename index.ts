@@ -1,12 +1,24 @@
+/** A thing or a `Promise` of it. */
+type OrPromise<T> = T | Promise<T>;
+/** An `Iterable` or an `AsyncIterable`. */
+type IterableOrAsyncIterable<T> = Iterable<T> | AsyncIterable<T>;
+/** An `Iterator` or an `AsyncIterator`. */
+type IteratorOrAsyncIterator<T> = Iterator<T> | AsyncIterator<T>;
+
 /**
  * Convert an `AsyncIterable` into an array.
  */
-export async function asyncIterableToArray<T>(xs: AsyncIterable<T> | Iterable<T>): Promise<T[]> {
-  const ret = new Array<T>();
-  for await (const x of xs) {
-    ret.push(x);
+export async function asyncIterableToArray<T>(xs: IterableOrAsyncIterable<T>) {
+  if (isAsyncIterable(xs)) {
+    const ret = new Array<T>();
+    for await (const x of xs) {
+      ret.push(x);
+    }
+    return ret;
+  } else {
+    // For an Iterable this will probably be more efficient that the loop above.
+    return Array.from(xs);
   }
-  return ret;
 }
 
 /**
@@ -230,3 +242,19 @@ export const zipAsyncSequential = makeZipAsync(async function*(xs, fn) {
     yield fn(x);
   }
 });
+
+/**
+ * Test if a value is an `AsyncIterable`.
+ * This is intended to be the same test done by `for await (..)` to determine whether to call
+ * `[Symbol.asyncIterator]()` or `[Symbol.iterator]()`.
+ */
+export function isAsyncIterable(x: any): x is AsyncIterable<unknown> {
+  return x[Symbol.asyncIterator] != null;
+}
+
+/**
+ * Test if a value is an `Iterable`.
+ */
+export function isIterable(x: any): x is Iterable<unknown> {
+  return x[Symbol.iterator] != null;
+}
