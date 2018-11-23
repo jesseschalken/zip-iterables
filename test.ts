@@ -1,5 +1,5 @@
 import { strict as assert } from "assert";
-import { zip, zipAsyncParallel, zipAsyncSequential, iterableToAsyncIterable, asyncIterableToArray } from ".";
+import { zip, zipAsyncParallel, zipAsync, iterableToAsyncIterable, asyncIterableToArray } from ".";
 
 const mkIter = <T>(gen: () => Iterator<T>) => ({ [Symbol.iterator]: gen });
 const mkIterAsync = <T>(gen: () => AsyncIterator<T>) => ({ [Symbol.asyncIterator]: gen });
@@ -405,7 +405,7 @@ async function standardTests(zip: ZipImpl) {
 
 async function main() {
   await standardTests((...its) => iterableToAsyncIterable(zip(...its)));
-  await standardTests((...its) => zipAsyncSequential(...its.map(iterableToAsyncIterable)));
+  await standardTests((...its) => zipAsync(...its.map(iterableToAsyncIterable)));
   await asyncIsParallel();
 
   console.log("tests finished");
