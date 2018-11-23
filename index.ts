@@ -92,16 +92,14 @@ function zipIterator<T>(iters: Iterator<T>[]): Iterator<T[]> {
   function mapIters(fn: (iter: Iterator<T>) => IteratorResult<T>) {
     try {
       const results = states.map(x => x.modify(fn));
-      const result = {
-        done: results.some(x => x.done),
-        value: results.map(x => x.value)
-      };
-      if (result.done) {
+      const done = results.some(x => x.done);
+      const value = results.map(x => (x.done == done ? x.value : undefined!));
+      if (done) {
         states.forEach(x => {
           if (!x.done) x.modify(x => iteratorReturn(x));
         });
       }
-      return result;
+      return { done, value };
     } catch (e) {
       states.forEach(x => {
         try {
@@ -147,21 +145,17 @@ class AsyncIteratorState<T> {
 function asyncZipIterator<T>(iters: IteratorOrAsyncIterator<T>[], asyncMap: AsyncMapFn): AsyncIterator<T[]> {
   const states = iters.map(x => new AsyncIteratorState(x));
 
-  async function mapIters(
-    fn: (x: IteratorOrAsyncIterator<T>) => OrPromise<IteratorResult<T>>
-  ): Promise<IteratorResult<T[]>> {
+  async function mapIters(fn: (x: IteratorOrAsyncIterator<T>) => OrPromise<IteratorResult<T>>) {
     try {
       const results = await asyncMap(states, x => x.modify(fn));
-      const result = {
-        done: results.some(x => x.done),
-        value: results.map(x => x.value)
-      };
-      if (result.done) {
+      const done = results.some(x => x.done);
+      const value = results.map(x => (x.done == done ? x.value : undefined!));
+      if (done) {
         await asyncMap(states, async x => {
           if (!(await x.done)) await x.modify(x => asyncIteratorReturn(x));
         });
       }
-      return result;
+      return { done, value };
     } catch (e) {
       await asyncMap(states, async x => {
         try {
