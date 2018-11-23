@@ -14,7 +14,10 @@ This package provides:
 ## Example
 
 ```typescript
+import { zip } from "zip-iterables";
+
 Array.from(zip(["a", "b", "c"], ["d", "e"], [1, 2]));
+
 // Result:
 // [
 //   ['a', 'd', 1],
