@@ -1,6 +1,6 @@
 {
   "name": "zip-iterables",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Convert an array of iterables to an iterable of arrays",
   "main": "index.js",
   "types": "index.ts",
