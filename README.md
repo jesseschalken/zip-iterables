@@ -5,11 +5,13 @@ This package provides:
 - A `zip` function that converts an array of `Iterable`s into an `Iterable` of arrays.
 - `zipAsync` and `zipAsyncParallel` functions that do the same for `AsyncIterable`s.
 - TypeScript overloads for n-tuples, such as `<A, B>(Iterable<A>, Iterable<B>) => Iterable<[A, B]>`.
-- Some utilities such as:
-  - `asyncIterableToArray()`
-  - `iterableToAsyncIterable()`
-  - `isAsyncIterable()` and `isIterable()`
-  - `iteratorReturn()`, `iteratorThrow()`, `asyncIteratorReturn()` and `asyncIteratorThrow()`
+- Some utility functions:
+  - `isAsyncIterable`
+  - `isIterable`
+  - `iteratorReturn`
+  - `iteratorThrow`
+  - `asyncIteratorReturn`
+  - `asyncIteratorThrow`
 
 ## Example
 

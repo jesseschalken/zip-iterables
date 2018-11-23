@@ -1,31 +1,3 @@
-/** Convert an `AsyncIterable` into an array. */
-export async function asyncIterableToArray<T>(xs: Iterable<T> | AsyncIterable<T>) {
-  if (isAsyncIterable(xs)) {
-    const ret = new Array<T>();
-    for await (const x of xs) {
-      ret.push(x);
-    }
-    return ret;
-  } else {
-    // For an Iterable this will probably be more efficient that the loop above.
-    return Array.from(xs);
-  }
-}
-
-/** Convert an `Iterable` or `Promise<Iterable>` into an `AsyncIterable`. */
-export function iterableToAsyncIterable<T>(iterable: Iterable<T> | Promise<Iterable<T>>): AsyncIterable<T> {
-  return {
-    [Symbol.asyncIterator]() {
-      const iter = (async () => (await iterable)[Symbol.iterator]())();
-      return {
-        next: async v => (await iter).next(v),
-        return: async v => iteratorReturn(await iter, v),
-        throw: async v => iteratorThrow(await iter, v)
-      };
-    }
-  };
-}
-
 /** Call `Iterator.return`, using a default if the method is not defined. */
 export function iteratorReturn<T>(x: Iterator<T>, y?: any) {
   if (x.return) return x.return(y);
