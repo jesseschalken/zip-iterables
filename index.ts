@@ -51,7 +51,7 @@ export function asyncIteratorThrow<T>(x: Iterator<T> | AsyncIterator<T>, y?: any
 }
 
 class IteratorState<T> {
-  done: boolean = true;
+  done: boolean | undefined = true;
   constructor(private iterator: Iterator<T>) {}
   modify(fn: (x: Iterator<T>) => IteratorResult<T>) {
     try {
@@ -113,7 +113,7 @@ const asyncMapSequential: AsyncMapFn = async (xs, fn) => {
 const asyncMapParallel: AsyncMapFn = (xs, fn) => Promise.all(xs.map(fn));
 
 class AsyncIteratorState<T> {
-  done: boolean | Promise<boolean> = true;
+  done: boolean | Promise<boolean | undefined> | undefined = true;
   constructor(private iterator: Iterator<T> | AsyncIterator<T>) {}
   async modify(fn: (x: Iterator<T> | AsyncIterator<T>) => IteratorResult<T> | Promise<IteratorResult<T>>) {
     // Fetch the result through an async function so failure is always captured as a rejected
